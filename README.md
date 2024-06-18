@@ -2,6 +2,8 @@
 
 This repository contains a Python script that periodically checks an energy information website for updates and sends these updates to specific Telegram channels if there are any changes.
 
+This script was created for personal notification of power outages for non-commercial use.
+
 ## Features
 
 - **Web Scraping**: Uses `cloudscraper` and `BeautifulSoup` to scrape energy information from a specific website.
