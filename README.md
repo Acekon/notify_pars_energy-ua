@@ -45,17 +45,18 @@ This script was created for personal notification of power outages for non-comme
     ```sql
     CREATE TABLE energy (
         queue INTEGER PRIMARY KEY,
-        now_day TEXT
+        now_day TEXT,
+        next_day TEXT
     );
     ```
     Insert initial data:
     ```sql
-    INSERT INTO energy (queue, now_day) VALUES (1, '');
-    INSERT INTO energy (queue, now_day) VALUES (2, '');
-    INSERT INTO energy (queue, now_day) VALUES (3, '');
-    INSERT INTO energy (queue, now_day) VALUES (4, '');
-    INSERT INTO energy (queue, now_day) VALUES (5, '');
-    INSERT INTO energy (queue, now_day) VALUES (6, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (1, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (2, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (3, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (4, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (5, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (6, '');
     .quit
     ```
 
@@ -64,6 +65,29 @@ This script was created for personal notification of power outages for non-comme
 Run the script:
 ```bash
 python main.py
+```
+Or start to cron:
+```bash
+touch start_energy.sh
+nano start_energy.sh
+```
+Write text
+```text
+#!/bin/bash
+# Activate the virtual environment
+source /you_path/venv/bin/activate
+
+# Run the Python script
+cd /you_path/
+python3 /you_path/energy.py
+```
+Create cron task
+```bash
+crontab -e
+```
+Write new line text
+```text
+1 * * * * /you_path/start_energy.sh >> /you_path/cron.log 2>&1
 ```
 
 The script will check the website for updates, compare them with the stored data in the database, and if there are any updates, it will send them to the corresponding Telegram channels.

@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime
 
 import cloudscraper
 from dotenv import load_dotenv
@@ -20,28 +21,27 @@ TELEGRAM_BOT = os.environ.get('TELEGRAM_BOT')
 
 def telegram_send_text(chat_id: str, text: str):
     tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT}/sendMessage'
-    response = requests.post(tg_url, json={'chat_id': chat_id, 'parse_mode': 'html', 'text': text})
-    print(response.text)
+    requests.post(tg_url, json={'chat_id': chat_id, 'parse_mode': 'html', 'text': text})
 
 
-def save_db(queue: int, now_day: str):
+def save_db(queue: int, text: str, day: str):
     conn = sqlite3.connect('energy.db')
     c = conn.cursor()
     sql_query = (f'UPDATE energy '
-                 f'SET now_day = "{now_day}"'
+                 f'SET {day} = "{text}"'
                  f'WHERE queue = "{queue}";')
     c.execute(sql_query)
     conn.commit()
     conn.close()
 
 
-def if_update(queue: int):
+def if_update(queue: int, day: str):
     conn = sqlite3.connect('energy.db')
     c = conn.cursor()
-    sql_query = f'Select now_day, queue  from energy where queue = "{queue}";'
+    sql_query = f'Select {day}, queue  from energy where queue = "{queue}";'
     c.execute(sql_query)
     now_day, queue = c.fetchone()
-    return now_day, queue
+    return now_day
 
 
 def parse(queue: int):
@@ -55,17 +55,30 @@ def parse(queue: int):
     soup = BeautifulSoup(response.text, 'html.parser')
     grafiks = soup.find_all(class_='grafik_string')
     formated_now_day = '\n'.join(grafiks[0].text.strip().split('\n'))
-    now_day, b = if_update(queue)
+    formated_next_day = '\n'.join(grafiks[1].text.strip().split('\n'))
+    now_day = if_update(queue, 'now_day')
+    next_day = if_update(queue, 'next_day')
     time.sleep(2)
-    return formated_now_day, now_day
+    return (formated_now_day, now_day), (formated_next_day, next_day)
+
+
+def main():
+    for i in range(1, 7):
+        now_day, next_day = parse(i)
+        site_now_day, db_now_day = now_day
+        site_next_day, db_next_day = next_day
+        current_time = int(datetime.now().strftime('%#H'))
+        if site_now_day != db_now_day:
+            save_db(queue=i, text=site_now_day, day='now_day')
+            telegram_send_text(text=f'Черга: {i}\n' + site_now_day, chat_id=channels.get(i))
+            print(f'Now day queue: {i} send')
+        elif site_next_day != db_next_day and current_time in [20, 21, 22, 23]:  # send only in number hours
+            save_db(queue=i, text=site_next_day, day='next_day')
+            telegram_send_text(text=f'Черга: {i}\n' + site_next_day, chat_id=channels.get(i))
+            print(f'Next day queue: {i} send')
+        else:
+            print(f'Queue: {i} is skipped')
 
 
 if __name__ == '__main__':
-    for i in range(1, 7):
-        site_now_day, db_now_day = parse(i)
-        if site_now_day != db_now_day:
-            save_db(i, site_now_day)
-            telegram_send_text(text=site_now_day, chat_id=channels.get(i))
-            print(f'Queue: {i} send')
-        else:
-            print(f'Queue: {i} is skipped')
+    main()
