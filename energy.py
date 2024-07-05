@@ -9,7 +9,7 @@ import requests
 import sqlite3
 
 load_dotenv()
-channels = {1: os.environ.get('CHANNEL_1'),
+CHANNELS = {1: os.environ.get('CHANNEL_1'),
             2: os.environ.get('CHANNEL_2'),
             3: os.environ.get('CHANNEL_3'),
             4: os.environ.get('CHANNEL_4'),
@@ -21,7 +21,8 @@ TELEGRAM_BOT = os.environ.get('TELEGRAM_BOT')
 
 def telegram_send_text(chat_id: str, text: str):
     tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT}/sendMessage'
-    requests.post(tg_url, json={'chat_id': chat_id, 'parse_mode': 'html', 'text': text})
+    res = requests.post(tg_url, json={'chat_id': chat_id, 'parse_mode': 'html', 'text': text})
+    print(datetime.now().strftime("%H:%M:%S"), res.json())
 
 
 def save_db(queue: int, text: str, day: str):
@@ -63,21 +64,22 @@ def parse(queue: int):
 
 
 def main():
-    for i in range(1, 7):
+    for i in range(1, 7):  # count queue
+        print(f'{datetime.now().strftime("%H:%M:%S")} Start Queue: {i}')
         now_day, next_day = parse(i)
         site_now_day, db_now_day = now_day
         site_next_day, db_next_day = next_day
         current_time = int(datetime.now().strftime('%#H'))
         if site_now_day != db_now_day:
             save_db(queue=i, text=site_now_day, day='now_day')
-            telegram_send_text(text=f'Черга: {i}\n' + site_now_day, chat_id=channels.get(i))
+            telegram_send_text(text=site_now_day, chat_id=CHANNELS.get(i))
             print(f'Now day queue: {i} send')
         elif site_next_day != db_next_day and current_time in [20, 21, 22, 23]:  # send only in number hours
             save_db(queue=i, text=site_next_day, day='next_day')
-            telegram_send_text(text=f'Черга: {i}\n' + site_next_day, chat_id=channels.get(i))
+            telegram_send_text(text=site_next_day, chat_id=CHANNELS.get(i))
             print(f'Next day queue: {i} send')
         else:
-            print(f'Queue: {i} is skipped')
+            print(f'Queue: {i} skip')
 
 
 if __name__ == '__main__':
