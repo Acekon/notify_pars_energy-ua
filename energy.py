@@ -28,9 +28,7 @@ def telegram_send_text(chat_id: str, text: str):
 def save_db(queue: int, text: str, day: str):
     conn = sqlite3.connect('energy.db')
     c = conn.cursor()
-    sql_query = (f'UPDATE energy '
-                 f'SET {day} = "{text}"'
-                 f'WHERE queue = "{queue}";')
+    sql_query = f'UPDATE energy SET {day} = "{text}" WHERE queue = "{queue}";'
     c.execute(sql_query)
     conn.commit()
     conn.close()
@@ -54,9 +52,9 @@ def parse(queue: int):
     }
     response = scraper.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
-    grafiks = soup.find_all(class_='grafik_string')
-    formated_now_day = '\n'.join(grafiks[0].text.strip().split('\n'))
-    formated_next_day = '\n'.join(grafiks[1].text.strip().split('\n'))
+    schedules = soup.find_all(class_='grafik_string')
+    formated_now_day = '\n'.join(schedules[0].text.strip().split('\n'))
+    formated_next_day = '\n'.join(schedules[1].text.strip().split('\n'))
     now_day = if_update(queue, 'now_day')
     next_day = if_update(queue, 'next_day')
     time.sleep(2)
@@ -76,7 +74,7 @@ def main():
             print(f'Now day queue: {i} send')
         elif site_next_day != db_next_day and current_time in [20, 21, 22, 23]:  # send only in number hours
             save_db(queue=i, text=site_next_day, day='next_day')
-            telegram_send_text(text=site_next_day, chat_id=CHANNELS.get(i))
+            telegram_send_text(text='🔜 ' + site_next_day, chat_id=CHANNELS.get(i))
             print(f'Next day queue: {i} send')
         else:
             print(f'Queue: {i} skip')
