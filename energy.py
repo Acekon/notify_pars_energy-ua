@@ -34,7 +34,7 @@ def save_db(queue: int, text: str, day: str):
     conn.close()
 
 
-def if_update(queue: int, day: str):
+def get_db(queue: int, day: str):
     conn = sqlite3.connect('energy.db')
     c = conn.cursor()
     sql_query = f'Select {day}, queue  from energy where queue = "{queue}";'
@@ -43,7 +43,7 @@ def if_update(queue: int, day: str):
     return now_day
 
 
-def parse(queue: int):
+def get_schedules(queue: int):
     scraper = cloudscraper.create_scraper()
     url = f'https://energy-ua.info/cherga/{queue}'
     headers = {
@@ -55,29 +55,31 @@ def parse(queue: int):
     schedules = soup.find_all(class_='grafik_string')
     formated_now_day = '\n'.join(schedules[0].text.strip().split('\n'))
     formated_next_day = '\n'.join(schedules[1].text.strip().split('\n'))
-    now_day = if_update(queue, 'now_day')
-    next_day = if_update(queue, 'next_day')
+    now_day_db = get_db(queue, 'now_day')
+    next_day_db = get_db(queue, 'next_day')
     time.sleep(2)
-    return (formated_now_day, now_day), (formated_next_day, next_day)
+    return (formated_now_day, now_day_db), (formated_next_day, next_day_db)
 
 
 def main():
+    day = [i for i in range(6, 19)]  # send only in number hours
+    night = [i for i in range(20, 24)]  # send only in number hours
     for i in range(1, 7):  # count queue
         print(f'{datetime.now().strftime("%H:%M:%S")} Start Queue: {i}')
-        now_day, next_day = parse(i)
+        now_day, next_day = get_schedules(i)
         site_now_day, db_now_day = now_day
         site_next_day, db_next_day = next_day
         current_time = int(datetime.now().strftime('%#H'))
-        if site_now_day != db_now_day:
+        if site_now_day != db_now_day and current_time in day:
             save_db(queue=i, text=site_now_day, day='now_day')
             telegram_send_text(text=site_now_day, chat_id=CHANNELS.get(i))
-            print(f'Now day queue: {i} send')
-        elif site_next_day != db_next_day and current_time in [20, 21, 22, 23]:  # send only in number hours
+            print(f'{datetime.now().strftime("%H:%M:%S")} Now day queue: {i} send')
+        elif site_next_day != db_next_day and current_time in night:
             save_db(queue=i, text=site_next_day, day='next_day')
             telegram_send_text(text='🔜 ' + site_next_day, chat_id=CHANNELS.get(i))
-            print(f'Next day queue: {i} send')
+            print(f'{datetime.now().strftime("%H:%M:%S")} Next day queue: {i} send')
         else:
-            print(f'Queue: {i} skip')
+            print(f'{datetime.now().strftime("%H:%M:%S")} Queue: {i} not update')
 
 
 if __name__ == '__main__':
