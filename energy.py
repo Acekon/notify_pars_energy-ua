@@ -156,7 +156,6 @@ def get_schedules(queue: int):
     )
     now_day_db = get_db(queue, "now_day")
     next_day_db = get_db(queue, "next_day")
-    time.sleep(2)
     return (formated_now_day, now_day_db), (formated_next_day, next_day_db)
 
 
@@ -185,6 +184,7 @@ def main():
             logger.info(f"Next day queue: {i} update")
         else:
             logger.info(f"Queue: {i} next not update")
+        time.sleep(2)
 
 
 if __name__ == "__main__":
