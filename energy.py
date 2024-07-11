@@ -49,7 +49,7 @@ def formated_array(array: list) -> list:
 
 
 def telegram_send_text(chat_id: str, text: str):
-    tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT}/sendMessage"
+    tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT}/sendMessage'
     response = requests.post(tg_url, json={"chat_id": chat_id, "parse_mode": "html", "text": text})
     if response.json().get("ok"):
         logger.info(response.json())
@@ -59,7 +59,7 @@ def telegram_send_text(chat_id: str, text: str):
 
 
 def telegram_update_message(chat_id: str, message_id, text: str):
-    tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT}/editMessageText"
+    tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT}/editMessageText'
     response = requests.post(
         tg_url,
         json={
@@ -76,7 +76,7 @@ def telegram_update_message(chat_id: str, message_id, text: str):
 
 
 def telegram_delete_message(chat_id: str, message_id):
-    tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT}/deleteMessage"
+    tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT}/deleteMessage'
     response = requests.post(tg_url, json={"chat_id": chat_id, "message_id": message_id})
     if response.json().get("ok"):
         logger.info({"chat_id": chat_id, "message_id": message_id, "tg": response.json()})
