@@ -2,6 +2,8 @@
 
 This repository contains a Python script that periodically checks an energy information website for updates and sends these updates to specific Telegram channels if there are any changes.
 
+This script was created for personal notification of power outages for non-commercial use.
+
 ## Features
 
 - **Web Scraping**: Uses `cloudscraper` and `BeautifulSoup` to scrape energy information from a specific website.
@@ -42,18 +44,20 @@ This repository contains a Python script that periodically checks an energy info
     In the SQLite shell, create the `energy` table:
     ```sql
     CREATE TABLE energy (
-        cherga INTEGER PRIMARY KEY,
-        now_day TEXT
+        queue INTEGER PRIMARY KEY,
+        now_day TEXT,
+        next_day TEXT,
+        message_id INTEGER,
     );
     ```
     Insert initial data:
     ```sql
-    INSERT INTO energy (cherga, now_day) VALUES (1, '');
-    INSERT INTO energy (cherga, now_day) VALUES (2, '');
-    INSERT INTO energy (cherga, now_day) VALUES (3, '');
-    INSERT INTO energy (cherga, now_day) VALUES (4, '');
-    INSERT INTO energy (cherga, now_day) VALUES (5, '');
-    INSERT INTO energy (cherga, now_day) VALUES (6, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (1, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (2, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (3, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (4, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (5, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (6, '', '');
     .quit
     ```
 
@@ -63,16 +67,31 @@ Run the script:
 ```bash
 python main.py
 ```
+Or start to cron:
+```bash
+touch start_energy.sh
+nano start_energy.sh
+```
+Write text
+```text
+#!/bin/bash
+# Activate the virtual environment
+source /you_path/venv/bin/activate
+
+# Run the Python script
+cd /you_path/
+python3 /you_path/energy.py
+```
+Create cron task
+```bash
+crontab -e
+```
+Write new line text
+```text
+1 * * * * /you_path/start_energy.sh >> /you_path/cron.log 2>&1
+```
 
 The script will check the website for updates, compare them with the stored data in the database, and if there are any updates, it will send them to the corresponding Telegram channels.
-
-## Code Overview
-
-- **Environment Variables**: Loads the Telegram bot token from a `.env` file.
-- **Telegram Integration**: Defines a function `telegram_send_text` to send messages to Telegram channels.
-- **Database Operations**: Defines functions `save_db` and `if_update` to interact with the SQLite database.
-- **Web Scraping**: Defines a function `parse` to scrape and parse the website for the latest energy information.
-- **Main Execution**: Iterates through predefined channels, checks for updates, and sends messages if there are new updates.
 
 ## Contributing
 
