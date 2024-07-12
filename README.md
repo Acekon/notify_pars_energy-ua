@@ -46,17 +46,18 @@ This script was created for personal notification of power outages for non-comme
     CREATE TABLE energy (
         queue INTEGER PRIMARY KEY,
         now_day TEXT,
-        next_day TEXT
+        next_day TEXT,
+        message_id INTEGER,
     );
     ```
     Insert initial data:
     ```sql
-    INSERT INTO energy (queue, now_day, next_day) VALUES (1, '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (2, '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (3, '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (4, '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (5, '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (6, '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (1, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (2, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (3, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (4, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (5, '', '');
+    INSERT INTO energy (queue, now_day, next_day) VALUES (6, '', '');
     .quit
     ```
 
@@ -91,14 +92,6 @@ Write new line text
 ```
 
 The script will check the website for updates, compare them with the stored data in the database, and if there are any updates, it will send them to the corresponding Telegram channels.
-
-## Code Overview
-
-- **Environment Variables**: Loads the Telegram bot token from a `.env` file.
-- **Telegram Integration**: Defines a function `telegram_send_text` to send messages to Telegram channels.
-- **Database Operations**: Defines functions `save_db` and `if_update` to interact with the SQLite database.
-- **Web Scraping**: Defines a function `parse` to scrape and parse the website for the latest energy information.
-- **Main Execution**: Iterates through predefined channels, checks for updates, and sends messages if there are new updates.
 
 ## Contributing
 
