@@ -40,12 +40,21 @@ logger.addHandler(console_handler)
 
 def formated_array(array: list) -> list:
     arr = list(filter(None, array))
-    result = []
     i = 0
+    result = []
     for _ in range(0, int(len(arr)/2)):
         result.append(f'{arr[i]} {arr[i + 1]}')
         i += 2
     return result
+
+
+def get_all_time_schedule(schedule_arr: list) -> int:
+    hours = 0
+    minutes = 0
+    for row in schedule_arr:
+        hours += int(row.split(' ')[-1].split(':')[0])
+        minutes += int(row.split(' ')[-1].split(':')[1])
+    return hours + int(minutes/60)
 
 
 def telegram_send_text(chat_id: str, text: str):
@@ -142,9 +151,10 @@ def get_schedules(queue: int):
     schedules = soup.find_all(class_="outage-periods-list")
     formated_now_day = "\n".join(formated_array(schedules[0].text.strip().split("\n")))
     formated_next_day = "\n".join(formated_array(schedules[1].text.strip().split("\n")))
+    all_time_schedule = get_all_time_schedule(formated_array(schedules[0].text.strip().split("\n")))
     now_day_db = get_db(queue, "now_day")
     next_day_db = get_db(queue, "next_day")
-    return (formated_now_day, now_day_db), (formated_next_day, next_day_db)
+    return (formated_now_day, now_day_db, all_time_schedule), (formated_next_day, next_day_db)
 
 
 def main():
@@ -153,14 +163,15 @@ def main():
     logger.info("Start")
     for i in range(1, 7):  # count queue
         now_day, next_day = get_schedules(i)
-        site_now_day, db_now_day = now_day
+        site_now_day, db_now_day, all_time_schedule = now_day
         site_next_day, db_next_day = next_day
         current_time = int(datetime.now().strftime("%#H"))
         message_id_db = get_message_id_db(queue=i)
         if site_now_day != db_now_day and current_time in day:
             text = f'Черга {i}, Відключення на сьогодні:\n'
             save_schedule_db(queue=i, text=site_now_day, day="now_day")
-            telegram_send_text(text=text + site_now_day, chat_id=CHANNELS.get(i))
+            text_all_time_schedule = f'\nЗагалом час відключення ~{all_time_schedule} годин'
+            telegram_send_text(text=text + site_now_day + text_all_time_schedule, chat_id=CHANNELS.get(i))
             logger.info(f"Now day queue: {i} send")
         else:
             logger.info(f"Queue: {i} now not update")
