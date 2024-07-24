@@ -149,7 +149,7 @@ def pars_poe_gvp(response):
 def get_start_end_schedule(day):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'SELECT date, start, end, class FROM schedulers WHERE date = "{day}";'
+    sql_query = f'SELECT date, start, end, class FROM schedulers WHERE date = "{day}" AND enable = 1;'
     c.execute(sql_query)
     return c.fetchall()
 
