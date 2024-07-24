@@ -97,6 +97,9 @@ def site_poe_gvp(date_in):
     }
     data = {"seldate": f'{{"date_in":"{date_in}"}}'}
     response = requests.post(url, headers=headers, data=data)
+    if response.status_code != 200:
+        logger.error(response.status_code,response.text)
+        telegram_send_text(chat_id=TELEGRAM_ADMIN, text=f'Status code error {response.status_code}\n{response.text}')
     return response.text
 
 
