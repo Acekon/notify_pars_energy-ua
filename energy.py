@@ -97,8 +97,6 @@ def site_poe_gvp(date_in):
     }
     data = {"seldate": f'{{"date_in":"{date_in}"}}'}
     response = requests.post(url, headers=headers, data=data)
-    with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
-        file.write(response.text)
     return response.text
 
 
@@ -159,12 +157,40 @@ def get_start_end_schedule(day):
 def get_list_schedule(day):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'SELECT class, sequence FROM schedulers WHERE date = "{day}";'
+    sql_query = f'SELECT start, end, class FROM schedulers WHERE date = "{day}" AND enable = 1;'
     c.execute(sql_query)
     return c.fetchall()
 
 
-def main_schedule(day, sequence, queue):
+def get_next_sequence():
+    letters = ['A', 'B', 'C']
+    conn = sqlite3.connect("energy.db")
+    c = conn.cursor()
+    sql_query = f'SELECT sequence FROM schedulers WHERE enable = 1 ORDER BY id DESC LIMIT 1;'
+    c.execute(sql_query)
+    current_index = letters.index(c.fetchall()[0][0])
+    next_index = (current_index + 1) % len(letters)
+    return letters[next_index]
+
+
+def get_current_sequence(date):
+    conn = sqlite3.connect("energy.db")
+    c = conn.cursor()
+    sql_query = f'SELECT sequence FROM schedulers WHERE date="{date}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
+    c.execute(sql_query)
+    return c.fetchone()[0]
+
+
+def disable_periods(date_schedulers):
+    conn = sqlite3.connect("energy.db")
+    c = conn.cursor()
+    sql_query = f"UPDATE schedulers SET enable = 0 WHERE date = '{date_schedulers}';"
+    c.execute(sql_query)
+    conn.commit()
+    conn.close()
+
+
+def get_schedule(day, sequence, queue):
     start_end_schedulers = get_start_end_schedule(day=day)
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
@@ -183,25 +209,6 @@ def main_schedule(day, sequence, queue):
             if int(start.split(':')[0]) in all_range:
                 result_text.append(f'{sequence}{class_}: {start} ~{end}')
     return result_text
-
-
-def get_next_sequence():
-    letters = ['A', 'B', 'C']
-    conn = sqlite3.connect("energy.db")
-    c = conn.cursor()
-    sql_query = f'SELECT sequence FROM schedulers ORDER BY id DESC LIMIT 1;'
-    c.execute(sql_query)
-    current_index = letters.index(c.fetchall()[0][0])
-    next_index = (current_index + 1) % len(letters)
-    return letters[next_index]
-
-
-def get_current_sequence(date):
-    conn = sqlite3.connect("energy.db")
-    c = conn.cursor()
-    sql_query = f'SELECT sequence FROM schedulers WHERE date="{date}" ORDER BY id DESC LIMIT 1;'
-    c.execute(sql_query)
-    return c.fetchone()[0]
 
 
 def save_list_schedulers(data_schedulers):
@@ -263,9 +270,20 @@ def fix_periods(data_schedulers):
     return data_schedulers
 
 
+def compare_periods(db_period, site_period):
+    if len(db_period) != len(site_period):
+        return False
+    for i in range(len(db_period)):
+        if db_period[i][0] != site_period[i].get('start').split(':')[0]:
+            return False
+        if db_period[i][1] != site_period[i].get('end').split(':')[0]:
+            return False
+    return True
+
+
 def send_notification(data_schedulers, sequence, day):
     for i in range(1, 7):  # count queue
-        message = main_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
+        message = get_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
         if ''.join(message) != ''.join(get_schedule_db(day=day, queue=i)):
             save_schedule_db(text=''.join(message), day=day, queue=i)
             all_time_schedule = get_count_all_time_schedule(message)
@@ -280,8 +298,8 @@ def send_notification(data_schedulers, sequence, day):
 
 
 def main():
-    current_day_period = [i for i in range(6, 22)]  # send only in number hours
-    next_day_period = [i for i in range(17, 24)]  # send only in number hours
+    current_day_period = [i for i in range(6, 24)]  # period send current day
+    next_day_period = [i for i in range(16, 24)]  # period check and send next day
     current_date = datetime.now()
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
@@ -289,6 +307,9 @@ def main():
     if current_date.time().hour in current_day_period:
         data_schedulers_now_day = fix_periods(data_schedulers[0])  # 0 current day
         periods = get_list_schedule(data_schedulers_now_day.get("date"))
+        if not compare_periods(periods, data_schedulers[0].get('schedulers')):
+            disable_periods(data_schedulers_now_day.get("date"))
+            periods = []
         if not periods:
             save_list_schedulers(data_schedulers_now_day)
             logger.info('Save now day list schedule')
@@ -297,6 +318,9 @@ def main():
     if current_date.time().hour in next_day_period and len(data_schedulers) == 2:
         data_schedulers_next_day = fix_periods(data_schedulers[1])  # 1 next day
         periods = get_list_schedule(data_schedulers_next_day.get("date"))
+        if not compare_periods(periods, data_schedulers[1].get('schedulers')):
+            disable_periods(data_schedulers_next_day.get("date"))
+            periods = []
         if not periods:
             save_list_schedulers(data_schedulers_next_day)
             logger.info('Save next day list schedule')
