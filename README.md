@@ -39,26 +39,11 @@ This script was created for personal notification of power outages for non-comme
 
 4. Set up your SQLite database:
     ```bash
-    sqlite3 energy.db
+    cat base-db.sql | sqlite3 energy.db
     ```
-    In the SQLite shell, create the `energy` table:
+   Need in table `schedullres` insert current day 'Y-M-D' and sequence ['A','B','C']
     ```sql
-    CREATE TABLE energy (
-        queue INTEGER PRIMARY KEY,
-        now_day TEXT,
-        next_day TEXT,
-        message_id INTEGER,
-    );
-    ```
-    Insert initial data:
-    ```sql
-    INSERT INTO energy (queue, now_day, next_day) VALUES (1, '', '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (2, '', '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (3, '', '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (4, '', '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (5, '', '');
-    INSERT INTO energy (queue, now_day, next_day) VALUES (6, '', '');
-    .quit
+    INSERT INTO "main"."schedulers"("id","date","start","end","class","sequence") VALUES (NULL,'Y-M-D',NULL,NULL,NULL,'A');
     ```
 
 ## Usage

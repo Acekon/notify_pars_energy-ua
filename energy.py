@@ -100,6 +100,8 @@ def site_poe_gvp(date_in):
     if response.status_code != 200:
         logger.error(response.status_code,response.text)
         telegram_send_text(chat_id=TELEGRAM_ADMIN, text=f'Status code error {response.status_code}\n{response.text}')
+    with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
+        file.write(response.text)
     return response.text
 
 
