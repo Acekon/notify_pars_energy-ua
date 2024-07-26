@@ -6,7 +6,7 @@ This script was created for personal notification of power outages for non-comme
 
 ## Features
 
-- **Web Scraping**: Uses `cloudscraper` and `BeautifulSoup` to scrape energy information from a specific website.
+- **Web Scraping**: Uses `BeautifulSoup` to scrape energy information from a specific website.
 - **Telegram Integration**: Sends updates to Telegram channels using the Telegram Bot API.
 - **SQLite Database**: Stores and updates the latest fetched information to prevent duplicate messages.
 

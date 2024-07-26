@@ -98,10 +98,11 @@ def site_poe_gvp(date_in):
     data = {"seldate": f'{{"date_in":"{date_in}"}}'}
     response = requests.post(url, headers=headers, data=data)
     if response.status_code != 200:
-        logger.error(response.status_code,response.text)
+        logger.error(f'Status code error {response.status_code}\n{response.text}')
         telegram_send_text(chat_id=TELEGRAM_ADMIN, text=f'Status code error {response.status_code}\n{response.text}')
     with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
         file.write(response.text)
+    logger.info(f'Load new info {response.url} http:{response.status_code}')
     return response.text
 
 
@@ -198,6 +199,17 @@ def disable_periods(date_schedulers):
     sql_query = f"UPDATE schedulers SET enable = 0 WHERE date = '{date_schedulers}';"
     c.execute(sql_query)
     conn.commit()
+    logger.info(f'Disabled periods: {date_schedulers}')
+    conn.close()
+
+
+def copy_next_day_to_current_day():
+    conn = sqlite3.connect("energy.db")
+    c = conn.cursor()
+    sql_query = f"UPDATE energy2 SET now_day = next_day;"
+    c.execute(sql_query)
+    conn.commit()
+    logger.info(f'Copy next day to current day')
     conn.close()
 
 
@@ -303,7 +315,7 @@ def send_notification(data_schedulers, sequence, day):
             logger.info(f"Send - Date: {data_schedulers.get('date')} Queue: {i}")
             time.sleep(0.5)
         else:
-            logger.info(f"Scip - Date: {data_schedulers.get('date')} Queue: {i} ")
+            logger.info(f"Skip - Date: {data_schedulers.get('date')} Queue: {i} ")
 
 
 def main():
@@ -337,7 +349,9 @@ def main():
         if data_schedulers_next_day.get("schedulers"):
             send_notification(data_schedulers_next_day, sequence, day='next_day')
         else:
-            logger.info('Empty list from site')
+            logger.info('Empty list from site to next_day')
+    if current_date.time().hour == 1:  # skip send notification current day if not updated at night
+        copy_next_day_to_current_day()
 
 
 if __name__ == "__main__":
