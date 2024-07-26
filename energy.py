@@ -181,7 +181,13 @@ def get_current_sequence(date):
     c = conn.cursor()
     sql_query = f'SELECT sequence FROM schedulers WHERE date="{date}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
     c.execute(sql_query)
-    return c.fetchone()[0]
+    sequence = c.fetchone()
+    if not sequence:
+        sql_query = f'SELECT sequence FROM schedulers ORDER BY id DESC LIMIT 1;'
+        c.execute(sql_query)
+        sequence = c.fetchone()
+        return sequence[0]
+    return sequence[0]
 
 
 def disable_periods(date_schedulers):
@@ -266,8 +272,6 @@ def get_count_all_time_schedule(schedule_arr: list) -> str:
 
 def fix_periods(data_schedulers):
     for i, scheduler in enumerate(data_schedulers.get("schedulers")):
-        if i == 0:
-            scheduler.update({'start': '00:00'})
         if i == len(data_schedulers.get("schedulers")) - 1:
             scheduler.update({'end': '24:00'})
     return data_schedulers
@@ -328,7 +332,10 @@ def main():
             save_list_schedulers(data_schedulers_next_day)
             logger.info('Save next day list schedule')
         sequence = get_current_sequence(data_schedulers_next_day.get("date"))
-        send_notification(data_schedulers_next_day, sequence, day='next_day')
+        if data_schedulers_next_day.get("schedulers"):
+            send_notification(data_schedulers_next_day, sequence, day='next_day')
+        else:
+            logger.info('Empty list from site')
 
 
 if __name__ == "__main__":
