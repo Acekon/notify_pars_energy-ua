@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -168,28 +168,50 @@ def get_list_schedule(day):
     return c.fetchall()
 
 
-def get_next_sequence():
+def get_next_sequence_latter(current_latter):
     letters = ['A', 'B', 'C']
-    conn = sqlite3.connect("energy.db")
-    c = conn.cursor()
-    sql_query = f'SELECT sequence FROM schedulers WHERE enable = 1 ORDER BY id DESC LIMIT 1;'
-    c.execute(sql_query)
-    current_index = letters.index(c.fetchall()[0][0])
+    current_index = letters.index(current_latter)
     next_index = (current_index + 1) % len(letters)
     return letters[next_index]
 
 
-def get_current_sequence(date):
+def get_current_sequence_now_day(now_day):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'SELECT sequence FROM schedulers WHERE date="{date}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
+    sql_query = f'SELECT sequence FROM schedulers WHERE date="{now_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
     c.execute(sql_query)
     sequence = c.fetchone()
     if not sequence:
-        sql_query = f'SELECT sequence FROM schedulers ORDER BY id DESC LIMIT 1;'
+        date_format = "%d-%M-%Y"
+        date_obj = datetime.strptime(now_day, date_format)
+        new_date_obj = date_obj + timedelta(days=-1)
+        str_now_day = new_date_obj.strftime('%d-%M-%Y')
+        sql_query = (f'SELECT sequence '
+                     f'FROM schedulers '
+                     f'WHERE date="{str_now_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;')
         c.execute(sql_query)
         sequence = c.fetchone()
-        return sequence[0]
+        return get_next_sequence_latter(sequence[0])
+    return sequence[0]
+
+
+def get_current_sequence_next_day(next_day):
+    conn = sqlite3.connect("energy.db")
+    c = conn.cursor()
+    sql_query = f'SELECT sequence FROM schedulers WHERE date="{next_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
+    c.execute(sql_query)
+    sequence = c.fetchone()
+    if not sequence:
+        date_format = "%d-%M-%Y"
+        date_obj = datetime.strptime(next_day, date_format)
+        new_date_obj = date_obj + timedelta(days=1)
+        str_next_day = new_date_obj.strftime('%d-%M-%Y')
+        sql_query = (f'SELECT sequence '
+                     f'FROM schedulers '
+                     f'WHERE date="{str_next_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;')
+        c.execute(sql_query)
+        sequence = c.fetchone()
+        return get_next_sequence_latter(sequence[0])
     return sequence[0]
 
 
@@ -234,10 +256,9 @@ def get_schedule(day, sequence, queue):
     return result_text
 
 
-def save_list_schedulers(data_schedulers):
+def save_list_schedulers(data_schedulers, sequence):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sequence = get_next_sequence()
     for scheduler in data_schedulers.get("schedulers"):
         sql_query = (f'INSERT INTO "main"."schedulers"'
                      f'("date",'
@@ -328,24 +349,24 @@ def main():
     if current_date.time().hour in current_day_period:
         data_schedulers_now_day = fix_periods(data_schedulers[0])  # 0 current day
         periods = get_list_schedule(data_schedulers_now_day.get("date"))
+        sequence = get_current_sequence_now_day(data_schedulers_now_day.get("date"))
         if not compare_periods(periods, data_schedulers[0].get('schedulers')):
             disable_periods(data_schedulers_now_day.get("date"))
             periods = []
         if not periods:
-            save_list_schedulers(data_schedulers_now_day)
+            save_list_schedulers(data_schedulers_now_day, sequence)
             logger.info('Save now day list schedule')
-        sequence = get_current_sequence(data_schedulers_now_day.get("date"))
         send_notification(data_schedulers_now_day, sequence, day='now_day')
     if current_date.time().hour in next_day_period and len(data_schedulers) == 2:
         data_schedulers_next_day = fix_periods(data_schedulers[1])  # 1 next day
         periods = get_list_schedule(data_schedulers_next_day.get("date"))
+        sequence = get_current_sequence_next_day(data_schedulers_next_day.get("date"))
         if not compare_periods(periods, data_schedulers[1].get('schedulers')):
             disable_periods(data_schedulers_next_day.get("date"))
             periods = []
         if not periods:
-            save_list_schedulers(data_schedulers_next_day)
+            save_list_schedulers(data_schedulers_next_day, sequence)
             logger.info('Save next day list schedule')
-        sequence = get_current_sequence(data_schedulers_next_day.get("date"))
         if data_schedulers_next_day.get("schedulers"):
             send_notification(data_schedulers_next_day, sequence, day='next_day')
         else:
