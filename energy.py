@@ -201,18 +201,8 @@ def get_current_sequence_next_day(next_day):
     sql_query = f'SELECT sequence FROM schedulers WHERE date="{next_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;'
     c.execute(sql_query)
     sequence = c.fetchone()
-    if not sequence:
-        date_format = "%d-%M-%Y"
-        date_obj = datetime.strptime(next_day, date_format)
-        new_date_obj = date_obj + timedelta(days=1)
-        str_next_day = new_date_obj.strftime('%d-%M-%Y')
-        sql_query = (f'SELECT sequence '
-                     f'FROM schedulers '
-                     f'WHERE date="{str_next_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;')
-        c.execute(sql_query)
-        sequence = c.fetchone()
-        return get_next_sequence_latter(sequence[0])
-    return sequence[0]
+    if sequence:
+        return sequence[0]
 
 
 def disable_periods(date_schedulers):
@@ -228,7 +218,7 @@ def disable_periods(date_schedulers):
 def copy_next_day_to_current_day():
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f"UPDATE energy2 SET now_day = next_day;"
+    sql_query = f"UPDATE energy SET now_day = next_day;"
     c.execute(sql_query)
     conn.commit()
     logger.info(f'Copy next day to current day')
@@ -268,6 +258,16 @@ def save_list_schedulers(data_schedulers, sequence):
                      f'("{data_schedulers.get("date")}",'
                      f'"{scheduler.get("start").split(":")[0]}","{scheduler.get("end").split(":")[0]}",'
                      f'"{scheduler.get("class_")}","{sequence}");')
+        c.execute(sql_query)
+        logger.info(sql_query)
+        conn.commit()
+    else:
+        sql_query = (f'INSERT INTO "main"."schedulers"'
+                     f'("date",'
+                     f'"sequence") '
+                     f'VALUES '
+                     f'("{data_schedulers.get("date")}",'
+                     f'"{sequence}");')
         c.execute(sql_query)
         logger.info(sql_query)
         conn.commit()
@@ -325,6 +325,12 @@ def compare_periods(db_period, site_period):
 
 def send_notification(data_schedulers, sequence, day):
     for i in range(1, 7):  # count queue
+        if not data_schedulers.get("schedulers"):
+            text = f'Черга {i}, Відключення на {data_schedulers.get("date")}: Відсутні'
+            telegram_send_text(chat_id=CHANNELS.get(i), text=text)
+            logger.info(f"Send - Date: {data_schedulers.get('date')} Queue: {i}")
+            time.sleep(0.5)
+            continue
         message = get_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
         if ''.join(message) != ''.join(get_schedule_db(day=day, queue=i)):
             save_schedule_db(text=''.join(message), day=day, queue=i)
@@ -350,25 +356,36 @@ def main():
         data_schedulers_now_day = fix_periods(data_schedulers[0])  # 0 current day
         periods = get_list_schedule(data_schedulers_now_day.get("date"))
         sequence = get_current_sequence_now_day(data_schedulers_now_day.get("date"))
-        if not compare_periods(periods, data_schedulers[0].get('schedulers')):
+        if len(data_schedulers) == 1 and len(data_schedulers[0].get('schedulers')) == 0 and not periods:
+            save_list_schedulers(data_schedulers_now_day, sequence)
+            logger.info('Empty list from site to now_day')
+            send_notification(data_schedulers_now_day, sequence, day='now_day')
+            return
+        if not compare_periods(periods, data_schedulers[0].get('schedulers')) and len(periods) == 0:
             disable_periods(data_schedulers_now_day.get("date"))
             periods = []
-        if not periods:
+        if not periods and len(periods) == 0:
             save_list_schedulers(data_schedulers_now_day, sequence)
             logger.info('Save now day list schedule')
-        send_notification(data_schedulers_now_day, sequence, day='now_day')
+        if not periods[0]:
+            send_notification(data_schedulers_now_day, sequence, day='now_day')
+        else:
+            logger.info('Skip empty list from site to now_day')
     if current_date.time().hour in next_day_period and len(data_schedulers) == 2:
         data_schedulers_next_day = fix_periods(data_schedulers[1])  # 1 next day
         periods = get_list_schedule(data_schedulers_next_day.get("date"))
         sequence = get_current_sequence_next_day(data_schedulers_next_day.get("date"))
-        if not compare_periods(periods, data_schedulers[1].get('schedulers')):
-            disable_periods(data_schedulers_next_day.get("date"))
-            periods = []
-        if not periods:
-            save_list_schedulers(data_schedulers_next_day, sequence)
-            logger.info('Save next day list schedule')
-        if data_schedulers_next_day.get("schedulers"):
-            send_notification(data_schedulers_next_day, sequence, day='next_day')
+        if sequence:
+            if not compare_periods(periods, data_schedulers[1].get('schedulers')):
+                disable_periods(data_schedulers_next_day.get("date"))
+                periods = []
+            if not periods:
+                save_list_schedulers(data_schedulers_next_day, sequence)
+                logger.info('Save next day list schedule')
+            if data_schedulers_next_day.get("schedulers"):
+                send_notification(data_schedulers_next_day, sequence, day='next_day')
+            else:
+                logger.info('Empty list from site to next_day')
         else:
             logger.info('Empty list from site to next_day')
     if current_date.time().hour == 1:  # skip send notification current day if not updated at night

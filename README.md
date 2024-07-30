@@ -13,7 +13,6 @@ This script was created for personal notification of power outages for non-comme
 ## Prerequisites
 
 - Python 3.x
-- `cloudscraper`
 - `beautifulsoup4`
 - `requests`
 - `python-dotenv`
