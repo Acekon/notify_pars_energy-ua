@@ -182,10 +182,10 @@ def get_current_sequence_now_day(now_day):
     c.execute(sql_query)
     sequence = c.fetchone()
     if not sequence:
-        date_format = "%d-%M-%Y"
+        date_format = "%d-%m-%Y"
         date_obj = datetime.strptime(now_day, date_format)
         new_date_obj = date_obj + timedelta(days=-1)
-        str_now_day = new_date_obj.strftime('%d-%M-%Y')
+        str_now_day = new_date_obj.strftime('%d-%m-%Y')
         sql_query = (f'SELECT sequence '
                      f'FROM schedulers '
                      f'WHERE date="{str_now_day}" AND enable = 1 ORDER BY id DESC LIMIT 1;')
@@ -349,6 +349,8 @@ def main():
     current_day_period = [i for i in range(6, 24)]  # period send current day
     next_day_period = [i for i in range(16, 24)]  # period check and send next day
     current_date = datetime.now()
+    if not current_date.time().hour in current_day_period + next_day_period:
+        return logger.info('Skip not period time check')
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
     data_schedulers = pars_poe_gvp(response)
@@ -388,8 +390,6 @@ def main():
                 logger.info('Empty list from site to next_day')
         else:
             logger.info('Empty list from site to next_day')
-    if current_date.time().hour == 1:  # skip send notification current day if not updated at night
-        copy_next_day_to_current_day()
 
 
 if __name__ == "__main__":
