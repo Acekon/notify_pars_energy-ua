@@ -100,8 +100,6 @@ def site_poe_gvp(date_in):
     if response.status_code != 200:
         logger.error(f'Status code error {response.status_code}\n{response.text}')
         telegram_send_text(chat_id=TELEGRAM_ADMIN, text=f'Status code error {response.status_code}\n{response.text}')
-    with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
-        file.write(response.text)
     logger.info(f'Load new info {response.url} http:{response.status_code}')
     return response.text
 
@@ -330,14 +328,6 @@ def get_count_all_time_schedule(schedule_arr: list) -> str:
     return f"{hours.__int__()} годин {minutes.__int__()} хвилин"
 
 
-def fix_periods(data_schedulers):  # todo now is disable
-    for i, scheduler in enumerate(data_schedulers.get("schedulers")):
-        if i == len(data_schedulers.get("schedulers")) - 1:
-            if scheduler.get(scheduler.get("end")).split(':')[0] == '23':
-                scheduler.update({'end': '24:00'})
-    return data_schedulers
-
-
 def compare_periods(db_period, site_period):
     if len(db_period) != len(site_period):
         return False
@@ -381,8 +371,6 @@ def main():
         return logger.info('Skip not period time check')
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
-    # with open('logs/19_08_2024_18_11_35.html', 'r', encoding='UTF-8') as f:
-    # response = f.read()
     data_schedulers = pars_poe_gvp(response)
     if len(data_schedulers) == 0:
         logger.info(f"Site no rerun schedules")
@@ -404,22 +392,8 @@ def main():
         if len(data_schedulers_now_day.get("schedulers")) == 0:
             save_list_schedulers(data_schedulers_now_day, sequence)
             send_notification(data_schedulers_now_day, sequence, day='now_day')
-        # if len(data_schedulers) == 1 and len(data_schedulers[0].get('schedulers')) == 0 and not periods:
-        #     save_list_schedulers(data_schedulers_now_day, sequence)
-        #     logger.info('Empty list from site to now_day')
-        #     send_notification(data_schedulers_now_day, sequence, day='now_day')
-        #     return
-        # if not compare_periods(periods, data_schedulers[0].get('schedulers')) and len(periods) == 0:
-        #     disable_periods(data_schedulers_now_day.get("date"))
-        #     periods = []
-        # if not periods and len(periods) == 0:
-        #     save_list_schedulers(data_schedulers_now_day, sequence)
-        #     logger.info('Save now day list schedule')
-        # if len(periods) == 0 and len(data_schedulers_now_day.get('schedulers')) == 0:
-        #     send_notification(data_schedulers_now_day, sequence, day='now_day')
-        # else:
-        #     logger.info('Skip empty list from site to now_day')
     if current_date.time().hour in next_day_period and len(data_schedulers) == 2:
+        return  # todo need refactor, is disable
         data_schedulers_next_day = data_schedulers[1]  # 1 next day
         periods = get_list_schedule(data_schedulers_next_day.get("date"))
         sequence = get_current_sequence_next_day(data_schedulers_next_day.get("date"))
