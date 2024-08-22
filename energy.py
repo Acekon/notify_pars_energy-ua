@@ -145,8 +145,10 @@ def pars_poe_gvp(response):
         schedulers = []
         for _ in range(len_periods):
             period = {'start': arr_periods[i], 'end': arr_periods[i + 1], 'class_': arr_periods[i + 2]}
-            if period.get('end') == '23:59':  # fix time, db not save min
-                period['end'] = '23:00'
+            if period.get('end').split(':')[1] != '00':  # fix time, not support min
+                period['end'] = ':'.join([period.get('end').split(':')[0], '00'])
+            if period.get('start').split(':')[1] != '00':  # fix time, not support min
+                period['start'] = ':'.join([period.get('start').split(':')[0], '00'])
             i += 3
             schedulers.append(period)
         result_dict['schedulers'] = schedulers
@@ -357,7 +359,7 @@ def send_notification(data_schedulers, sequence, day):
                 continue
             save_schedule_db(text='', day=day, queue=i)
             telegram_send_text(chat_id=CHANNELS.get(i), text=text)
-            logger.info(f"Send notification - Date: {data_schedulers.get('date')} Queue: {i}")
+            logger.info(f"SEND notification - Date: {data_schedulers.get('date')} Queue: {i}")
         message = get_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
         if ''.join(message) != ''.join(get_schedule_db(day=day, queue=i)):
             save_schedule_db(text=''.join(message), day=day, queue=i)
@@ -380,7 +382,7 @@ def main():
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
     # with open('logs/19_08_2024_18_11_35.html', 'r', encoding='UTF-8') as f:
-         # response = f.read()
+    # response = f.read()
     data_schedulers = pars_poe_gvp(response)
     if len(data_schedulers) == 0:
         logger.info(f"Site no rerun schedules")
@@ -389,8 +391,9 @@ def main():
         data_schedulers_now_day = data_schedulers[0]  # 0 current day
         periods = get_list_schedule(data_schedulers_now_day.get("date"))
         sequence = get_current_sequence_now_day(data_schedulers_now_day.get("date"))
-        periods_converted = [{'start': str(start) + ':00', 'end': str(end) + ':00', 'class_': str(cls)} for start, end, cls in periods]
-        if periods_converted != data_schedulers_now_day.get('schedulers'):
+        periods_converted = [{'start': str(start) + ':00', 'end': str(end) + ':00', 'class_': str(cls)} for
+                             start, end, cls in periods]
+        if periods_converted != data_schedulers_now_day.get('schedulers') and not periods == [(None, None, None)]:
             disable_periods(data_schedulers_now_day.get("date"))
             save_list_schedulers(data_schedulers_now_day, sequence)
         if not compare_periods(periods, data_schedulers[0].get('schedulers')) and not periods:
