@@ -99,8 +99,12 @@ def site_poe_gvp(date_in):
     response = requests.post(url, headers=headers, data=data)
     if response.status_code != 200:
         logger.error(f'Status code error {response.status_code}\n{response.text}')
-        telegram_send_text(chat_id=TELEGRAM_ADMIN, text=f'Status code error {response.status_code}\n{response.text}')
+        telegram_send_text(chat_id=TELEGRAM_ADMIN,
+                           text=f'Status code error {response.status_code}\n{response.text}')
     logger.info(f'Load new info {response.url} http:{response.status_code}')
+    # todo remove deploy
+    with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
+        file.write(response.text)
     return response.text
 
 
@@ -292,26 +296,36 @@ def save_list_schedulers(data_schedulers, sequence):
         conn.commit()
 
 
-def save_schedule_db(queue: int, text: str, day: str):
+def save_schedule_send_log(queue: int, text: str, date: str):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'UPDATE energy SET {day} = "{text}" WHERE queue = "{queue}";'
+    sql_query_select = f'SELECT * FROM send_log WHERE date = "{date}" AND queue = {queue};'
+    c.execute(sql_query_select)
+    db = c.fetchone()
+    if db:
+        sql_query = f'UPDATE send_log SET text = "{text}" WHERE date = "{date}" and queue = "{queue}";'
+        logger.info(sql_query)
+        c.execute(sql_query)
+        conn.commit()
+        conn.close()
+        return True
+    sql_query = f'INSERT OR IGNORE INTO send_log (date,text,queue) VALUES ("{date}","{text}",{queue})'
+    logger.info(sql_query)
     c.execute(sql_query)
     conn.commit()
     conn.close()
 
 
-def get_schedule_db(queue: int, day: str):
+def get_schedule_send_log(queue: int, date: str):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'SELECT {day} FROM energy WHERE queue = "{queue}";'
+    sql_query = f'SELECT text FROM send_log WHERE queue = "{queue}" AND date = "{date}";'
     c.execute(sql_query)
     conn.commit()
     result = c.fetchone()
-    if result[0]:
-        return result
-    else:
+    if not result:
         return ['']
+    return result
 
 
 def get_count_all_time_schedule(schedule_arr: list) -> str:
@@ -339,20 +353,20 @@ def compare_periods(db_period, site_period):
     return True
 
 
-def send_notification(data_schedulers, sequence, day):
+def send_notification(data_schedulers, sequence):
     for i in range(1, 7):  # count queue
         time.sleep(0.5)
         if not data_schedulers.get("schedulers"):
             text = f'Черга {i}, Відключення на {data_schedulers.get("date")}: Відсутні'
-            if '' == ''.join(get_schedule_db(day=day, queue=i)):
+            if '' == ''.join(get_schedule_send_log(date=data_schedulers.get("date"), queue=i)):
                 logger.info(f"Skip notification - Date: {data_schedulers.get('date')} Queue: {i} ")
                 continue
-            save_schedule_db(text='', day=day, queue=i)
+            save_schedule_send_log(text='', date=data_schedulers.get("date"), queue=i)
             telegram_send_text(chat_id=CHANNELS.get(i), text=text)
             logger.info(f"SEND notification - Date: {data_schedulers.get('date')} Queue: {i}")
         message = get_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
-        if ''.join(message) != ''.join(get_schedule_db(day=day, queue=i)):
-            save_schedule_db(text=''.join(message), day=day, queue=i)
+        if ''.join(message) != ''.join(get_schedule_send_log(date=data_schedulers.get("date"), queue=i)):
+            save_schedule_send_log(text=''.join(message), date=data_schedulers.get("date"), queue=i)
             all_time_schedule = get_count_all_time_schedule(message)
             text_all_time_schedule = f'\nЗагалом час відключення ~{all_time_schedule}'
             text = f'Черга {i}, Відключення на {data_schedulers.get("date")}:\n' + "\n".join(
@@ -368,48 +382,38 @@ def main():
     next_day_period = [i for i in range(16, 24)]  # period check and send next day
     current_date = datetime.now()
     if not current_date.time().hour in current_day_period + next_day_period:
-        return logger.info('Skip not period time check')
+        return logger.info('Skip check outside time period')
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
+    # with open('logs/27_08_2024_23_55_52.html', 'r', encoding='utf-8') as f:    # todo remove deploy
+    #    response = f.read()
     data_schedulers = pars_poe_gvp(response)
     if len(data_schedulers) == 0:
         logger.info(f"Site no rerun schedules")
         return
-    if current_date.time().hour in current_day_period:
-        data_schedulers_now_day = data_schedulers[0]  # 0 current day
-        periods = get_list_schedule(data_schedulers_now_day.get("date"))
-        sequence = get_current_sequence_now_day(data_schedulers_now_day.get("date"))
-        periods_converted = [{'start': str(start) + ':00', 'end': str(end) + ':00', 'class_': str(cls)} for
-                             start, end, cls in periods]
-        if periods_converted != data_schedulers_now_day.get('schedulers') and not periods == [(None, None, None)]:
-            disable_periods(data_schedulers_now_day.get("date"))
-            save_list_schedulers(data_schedulers_now_day, sequence)
-        if not compare_periods(periods, data_schedulers[0].get('schedulers')) and not periods:
-            save_list_schedulers(data_schedulers_now_day, sequence)
-        if len(data_schedulers_now_day.get("schedulers")) >= 1:
-            send_notification(data_schedulers_now_day, sequence, day='now_day')
-            return
-        if len(data_schedulers_now_day.get("schedulers")) == 0:
-            save_list_schedulers(data_schedulers_now_day, sequence)
-            send_notification(data_schedulers_now_day, sequence, day='now_day')
-    if current_date.time().hour in next_day_period and len(data_schedulers) == 2:
-        return  # todo need refactor, is disable
-        data_schedulers_next_day = data_schedulers[1]  # 1 next day
-        periods = get_list_schedule(data_schedulers_next_day.get("date"))
-        sequence = get_current_sequence_next_day(data_schedulers_next_day.get("date"))
-        if sequence:
-            if not compare_periods(periods, data_schedulers[1].get('schedulers')):
-                disable_periods(data_schedulers_next_day.get("date"))
-                periods = []
-            if not periods:
-                save_list_schedulers(data_schedulers_next_day, sequence)
-                logger.info('Save next day list schedule')
-            if data_schedulers_next_day.get("schedulers"):
-                send_notification(data_schedulers_next_day, sequence, day='next_day')
-            else:
-                logger.info('Empty list from site to next_day')
-        else:
-            logger.info('Empty list from site to next_day')
+    for data_scheduler in data_schedulers:
+        if current_date.time().hour in current_day_period:
+            periods = get_list_schedule(data_scheduler.get("date"))
+            sequence = get_current_sequence_now_day(data_scheduler.get("date"))
+            periods_converted = [{'start': str(start) + ':00', 'end': str(end) + ':00', 'class_': str(cls)} for
+                                 start, end, cls in periods]
+            if periods == [(None, None, None)] and len(data_schedulers) == 0:
+                logger.info(f"Site no rerun schedules")
+                continue
+            if periods_converted != data_scheduler.get('schedulers'):
+                logger.info(f"Is update schedulers periods")
+                disable_periods(data_scheduler.get("date"))
+                save_list_schedulers(data_scheduler, sequence)
+            if not compare_periods(periods, data_scheduler.get('schedulers')) and not periods:
+                logger.info(f"Is update schedulers periods new data")
+                save_list_schedulers(data_scheduler, sequence)
+            if len(data_scheduler.get("schedulers")) >= 1:
+                send_notification(data_scheduler, sequence)
+                continue
+            if len(data_scheduler.get("schedulers")) == 0:
+                logger.info(f"Send is empty")
+                save_list_schedulers(data_scheduler, sequence)
+                send_notification(data_scheduler, sequence)
 
 
 if __name__ == "__main__":
