@@ -245,6 +245,7 @@ def get_schedule(day: str, sequence: str, queue: int):
 
 
 def save_list_schedulers(data_schedulers: dict[str, str | list | list[dict[str, str]]], sequence: str):
+    send_admin_zone_schedulers(data_schedulers)
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
     for scheduler in data_schedulers.get("schedulers"):
@@ -356,6 +357,8 @@ def send_notification(data_schedulers: dict[str, str | list | list[dict[str, str
             telegram_send_text(chat_id=CHANNELS.get(i), text=text)
             logger.info(f"SEND notification - Date: {data_schedulers.get('date')} Queue: {i}")
         message = get_schedule(day=data_schedulers.get("date"), sequence=sequence, queue=i)
+       # print(data_schedulers, message)
+       # exit()
         if ''.join(message) != ''.join(get_schedule_send_log(date=data_schedulers.get("date"), queue=i)):
             save_schedule_send_log(text=''.join(message), date=data_schedulers.get("date"), queue=i)
             all_time_schedule = get_count_all_time_schedule(message)
@@ -368,15 +371,22 @@ def send_notification(data_schedulers: dict[str, str | list | list[dict[str, str
             logger.info(f"Skip notification is no update - Date: {data_schedulers.get('date')} Queue: {i} ")
 
 
+def send_admin_zone_schedulers(zone_schedulers):
+    text = [zone_schedulers.get('date')]
+    for scheduler in zone_schedulers.get('schedulers'):
+        text.append(f'Start:{scheduler.get("start")} End:{scheduler.get("end")} Class:{scheduler.get("class_")}')
+    telegram_send_text(chat_id=TELEGRAM_ADMIN, text="\n".join(text))
+
+
 def main():
-    work_period = [i for i in range(6, 21)]  # period send current day
+    work_period = [i for i in range(6, 23)]  # period send current day
     current_date = datetime.now()
     if not current_date.time().hour in work_period:
         return logger.info('Skip check outside time period')
     formatted_date = current_date.strftime('%d-%m-%Y')
     response = site_poe_gvp(formatted_date)
     if not response:
-        return logger.info('Site return bad html code')
+        return logger.info('The site returns bad html code of the website')
     # with open('logs/27_08_2024_23_55_52.html', 'r', encoding='utf-8') as f:    # todo remove deploy
     #    response = f.read()
     data_schedulers = pars_poe_gvp(response)
