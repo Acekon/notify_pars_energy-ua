@@ -173,56 +173,57 @@ def get_count_all_time_schedule(schedule_arr: list) -> str:
 def pars_table_poe(response):
     soup = BeautifulSoup(response, 'html.parser')
     gvps = soup.find_all('div', class_='gpvinfodetail')
+    schedulers = []
     for gvp in gvps:
-        gvps_tables = soup.find_all('table', class_='turnoff-scheduleui-table')
         date = gvp.find('b', style='color: red;')
         date = convert_date(date.text)
         about_day = gvp.find_all('b')
+        gvps_table = gvp.find('table', class_='turnoff-scheduleui-table')
         if any("<b>плануємо не застосовувати</b>" in str(tag) for tag in about_day):
             logger.info(f"No power outages")
-            return gvp.text, date
-        if not gvps_tables:
+            schedulers.append((gvp.text.strip(), date))
+        if not gvps_table:
             logger.info(f"No table is {date}")
-            return False, date
-        for gvps_table in gvps_tables:
-            head_table, data_table = gvps_table
-            queue = data_table.find_all('tr')
-            data_queues = []
-            for row in queue:
-                cells = row.find_all('td')
-                row_data = []
-                for cell in cells:
-                    if 'light_1' in cell.get('class', []):
-                        row_data.append(0)
-                        continue
-                    if 'light_2' in cell.get('class', []):
-                        row_data.append(1)
-                        continue
-                    if 'light_3' in cell.get('class', []):
-                        row_data.append(1)
-                        continue
-                    if 'turnoff-scheduleui-table-queue' in cell.get('class', []):
-                        continue
-                    if '12' in cell.get('rowspan', []):
-                        continue
-                    else:
-                        continue
-                data_queues.append(row_data)
-            num = 1
-            sub_num = 1
-            flag = 0
-            resul_queue = []
-            for queue in data_queues:
-                resul_queue.append(queue_time_data(queue_num=num, queue_sub_num=sub_num, time_slots=queue))
-                if flag == 0:
-                    flag = 1
-                    sub_num = 2
+            continue
+        head_table, data_table = gvps_table
+        queue = data_table.find_all('tr')
+        data_queues = []
+        for row in queue:
+            cells = row.find_all('td')
+            row_data = []
+            for cell in cells:
+                if 'light_1' in cell.get('class', []):
+                    row_data.append(0)
                     continue
-                if flag == 1:
-                    flag = 0
-                    num += 1
-                    sub_num = 1
-            return resul_queue, date
+                if 'light_2' in cell.get('class', []):
+                    row_data.append(1)
+                    continue
+                if 'light_3' in cell.get('class', []):
+                    row_data.append(1)
+                    continue
+                if 'turnoff-scheduleui-table-queue' in cell.get('class', []):
+                    continue
+                if '12' in cell.get('rowspan', []):
+                    continue
+                else:
+                    continue
+            data_queues.append(row_data)
+        num = 1
+        sub_num = 1
+        flag = 0
+        resul_queue = []
+        for queue in data_queues:
+            resul_queue.append(queue_time_data(queue_num=num, queue_sub_num=sub_num, time_slots=queue))
+            if flag == 0:
+                flag = 1
+                sub_num = 2
+                continue
+            if flag == 1:
+                flag = 0
+                num += 1
+                sub_num = 1
+        schedulers.append((resul_queue, date))
+        return schedulers
 
 
 def index_to_time(index):
@@ -241,15 +242,16 @@ def queue_time_data(queue_num, queue_sub_num, time_slots):
         elif value == 0 and start is not None:
             active_periods.append((start, i - 1))
             start = None
-
     if start is not None:
         active_periods.append((start, len(time_slots) - 1))
-
     time_intervals = [(index_to_time(start), index_to_time(end + 1)) for start, end in active_periods]
     result_queue = []
-    for start_time, end_time in time_intervals:
-        queue = {'queue': f'{queue_num}.{queue_sub_num}', 'data': [start_time, end_time]}
-        result_queue.append(queue)
+    if not time_intervals:
+        result_queue.append({'queue': f'{queue_num}.{queue_sub_num}', 'data': []})
+    else:
+        for start_time, end_time in time_intervals:
+            queue = {'queue': f'{queue_num}.{queue_sub_num}', 'data': [start_time, end_time]}
+            result_queue.append(queue)
     return result_queue
 
 
@@ -278,13 +280,13 @@ def send_notification_schedulers(schedulers, date):
             logger.info(f"Skip notification is no update - Date: {date} Queue: {sub_num_queue} ")
 
 
-def send_notification_outages(date, no_power_outages=None):
+def send_notification_outages(date, no_power_outages: str):
     sleep(0.5)
     log_message = get_schedule_send_log(queue='1.1', date=date)
     if log_message[0] != no_power_outages:
         save_schedule_send_log(queue='1.1', text=no_power_outages, date=date)
         for queue in range(1, 7):
-            telegram_send_text(chat_id=CHANNELS.get(int(queue)), text=no_power_outages)
+            telegram_send_text(chat_id=CHANNELS.get(int(queue)), text=no_power_outages.split('.')[0])
         logger.info(f"Send notification power outages - Date: {date}")
     else:
         logger.info(f"Skip notification is no power outages - Date: {date}")
@@ -301,12 +303,15 @@ def main():
         return logger.info('The site returns bad html code of the website')
     # with open('logs/16_12_2024_16_47_07.html', 'r', encoding='utf-8') as f:  # todo remove deploy
     #    response = f.read()
-    schedulers, date = pars_table_poe(response)
-    if isinstance(schedulers, str):
-        send_notification_outages(date=date, no_power_outages=schedulers)
-        return
-    if schedulers and date:
-        send_notification_schedulers(schedulers=schedulers, date=date)
+    schedulers = pars_table_poe(response)
+    for schedule in schedulers:
+        data_schedule = schedule[0]
+        date = schedule[1]
+        if isinstance(schedule[0], str):
+            send_notification_outages(date=date, no_power_outages=data_schedule)
+            continue
+        if schedule and date:
+            send_notification_schedulers(schedulers=data_schedule, date=date)
 
 
 if __name__ == "__main__":
