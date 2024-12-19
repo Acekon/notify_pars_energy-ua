@@ -101,7 +101,6 @@ def site_poe_gvp(date_in):
                            text=f'Status code error {response.status_code}\n{response.text}')
         return False
     logger.info(f'Load new info {response.url} http:{response.status_code}')
-    # todo remove deploy
     with open(f'logs/{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.html', "w", encoding='UTF-8') as file:
         file.write(response.text)
     return response.text
@@ -170,7 +169,48 @@ def get_count_all_time_schedule(schedule_arr: list) -> str:
     return f"{hours.__int__()} годин {minutes.__int__()} хвилин"
 
 
-def pars_table_poe(response):
+def pars_table(data_table):
+    queue = data_table.find_all('tr')
+    data_queues = []
+    for row in queue:
+        cells = row.find_all('td')
+        row_data = []
+        for cell in cells:
+            if 'light_1' in cell.get('class', []):
+                row_data.append(0)
+                continue
+            if 'light_2' in cell.get('class', []):
+                row_data.append(1)
+                continue
+            if 'light_3' in cell.get('class', []):
+                row_data.append(1)
+                continue
+            if 'turnoff-scheduleui-table-queue' in cell.get('class', []):
+                continue
+            if '12' in cell.get('rowspan', []):
+                continue
+            else:
+                continue
+        data_queues.append(row_data)
+    num = 1
+    sub_num = 1
+    flag = 0
+    resul_queue = []
+    for queue in data_queues:
+        resul_queue.append(queue_time_data(queue_num=num, queue_sub_num=sub_num, time_slots=queue))
+        if flag == 0:
+            flag = 1
+            sub_num = 2
+            continue
+        if flag == 1:
+            flag = 0
+            num += 1
+            sub_num = 1
+    return resul_queue
+
+
+def pars_html(response):
+    """Parsing html"""
     soup = BeautifulSoup(response, 'html.parser')
     gvps = soup.find_all('div', class_='gpvinfodetail')
     schedulers = []
@@ -178,52 +218,14 @@ def pars_table_poe(response):
         date = gvp.find('b', style='color: red;')
         date = convert_date(date.text)
         about_day = gvp.find_all('b')
-        gvps_table = gvp.find('table', class_='turnoff-scheduleui-table')
         if any("<b>плануємо не застосовувати</b>" in str(tag) for tag in about_day):
             logger.info(f"No power outages")
             schedulers.append((gvp.text.strip(), date))
-        if not gvps_table:
-            logger.info(f"No table is {date}")
-            continue
-        head_table, data_table = gvps_table
-        queue = data_table.find_all('tr')
-        data_queues = []
-        for row in queue:
-            cells = row.find_all('td')
-            row_data = []
-            for cell in cells:
-                if 'light_1' in cell.get('class', []):
-                    row_data.append(0)
-                    continue
-                if 'light_2' in cell.get('class', []):
-                    row_data.append(1)
-                    continue
-                if 'light_3' in cell.get('class', []):
-                    row_data.append(1)
-                    continue
-                if 'turnoff-scheduleui-table-queue' in cell.get('class', []):
-                    continue
-                if '12' in cell.get('rowspan', []):
-                    continue
-                else:
-                    continue
-            data_queues.append(row_data)
-        num = 1
-        sub_num = 1
-        flag = 0
-        resul_queue = []
-        for queue in data_queues:
-            resul_queue.append(queue_time_data(queue_num=num, queue_sub_num=sub_num, time_slots=queue))
-            if flag == 0:
-                flag = 1
-                sub_num = 2
-                continue
-            if flag == 1:
-                flag = 0
-                num += 1
-                sub_num = 1
-        schedulers.append((resul_queue, date))
-        return schedulers
+        gvps_table = gvp.find('table', class_='turnoff-scheduleui-table')
+        if gvps_table:
+            gvps_data = gvps_table.find('tbody')
+            schedulers.append((pars_table(gvps_data), date))
+    return schedulers
 
 
 def index_to_time(index):
@@ -256,6 +258,7 @@ def queue_time_data(queue_num, queue_sub_num, time_slots):
 
 
 def send_notification_schedulers(schedulers, date):
+    """Send notification if schedule has changed"""
     for schedule in schedulers:
         log_message = get_schedule_send_log(queue=schedule[0].get('queue'), date=date)
         sleep(0.5)
@@ -281,6 +284,7 @@ def send_notification_schedulers(schedulers, date):
 
 
 def send_notification_outages(date, no_power_outages: str):
+    """Send notification if no power outages"""
     sleep(0.5)
     log_message = get_schedule_send_log(queue='1.1', date=date)
     if log_message[0] != no_power_outages:
@@ -292,18 +296,21 @@ def send_notification_outages(date, no_power_outages: str):
         logger.info(f"Skip notification is no power outages - Date: {date}")
 
 
-def main():
+def main(debug):
+    """Main function"""
     work_period = [i for i in range(6, 23)]  # hours, period send current day
     current_date = datetime.now()
     if not current_date.time().hour in work_period:
         return logger.info('Skip check outside time period')
     formatted_date = current_date.strftime('%d-%m-%Y')
-    response = site_poe_gvp(formatted_date)
+    if debug:
+        with open('logs/18_12_2024_22_59_48.html', 'r', encoding='utf-8') as f:
+            response = f.read()
+    else:
+        response = site_poe_gvp(formatted_date)
     if not response:
         return logger.info('The site returns bad html code of the website')
-    # with open('logs/16_12_2024_16_47_07.html', 'r', encoding='utf-8') as f:  # todo remove deploy
-    #    response = f.read()
-    schedulers = pars_table_poe(response)
+    schedulers = pars_html(response)
     for schedule in schedulers:
         data_schedule = schedule[0]
         date = schedule[1]
@@ -315,4 +322,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(debug=True)
