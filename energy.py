@@ -123,20 +123,24 @@ def convert_date(date_str: str):
     return date_obj.strftime('%d-%m-%Y')
 
 
-def save_schedule_send_log(queue: str, text: str, date: str):
+def save_schedule_send_log(queue: str, text: str, date: str, tg_mess_id: int):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query_select = f'SELECT * FROM send_log WHERE date = "{date}" AND queue = {queue};'
+    sql_query_select = f'SELECT * FROM send_log_v2 WHERE date = "{date}" AND queue = {queue};'
     c.execute(sql_query_select)
     db = c.fetchone()
     if db:
-        sql_query = f'UPDATE send_log SET text = "{text}" WHERE date = "{date}" and queue = "{queue}";'
+        sql_query = (f'UPDATE send_log_v2 '
+                     f'SET text = "{text}" and tg_mess_id = "{tg_mess_id}" '
+                     f'WHERE date = "{date}" and queue = "{queue}";')
         logger.info(sql_query)
         c.execute(sql_query)
         conn.commit()
         conn.close()
         return True
-    sql_query = f'INSERT OR IGNORE INTO send_log (date,text,queue) VALUES ("{date}","{text}",{queue})'
+    sql_query = (f'INSERT OR IGNORE INTO send_log_v2 '
+                 f'(date,text,queue,tg_mess_id) '
+                 f'VALUES ("{date}","{text}",{queue},{tg_mess_id})')
     logger.info(sql_query)
     c.execute(sql_query)
     conn.commit()
@@ -146,7 +150,7 @@ def save_schedule_send_log(queue: str, text: str, date: str):
 def get_schedule_send_log(queue: str, date: str):
     conn = sqlite3.connect("energy.db")
     c = conn.cursor()
-    sql_query = f'SELECT text FROM send_log WHERE queue = "{queue}" AND date = "{date}";'
+    sql_query = f'SELECT text FROM send_log_v2 WHERE queue = "{queue}" AND date = "{date}";'
     c.execute(sql_query)
     conn.commit()
     result = c.fetchone()
@@ -257,7 +261,7 @@ def queue_time_data(queue_num, queue_sub_num, time_slots):
     return result_queue
 
 
-def send_notification_schedulers(schedulers, date):
+def send_notification_schedulers(schedulers, date: str):
     """Send notification if schedule has changed"""
     for schedule in schedulers:
         log_message = get_schedule_send_log(queue=schedule[0].get('queue'), date=date)
@@ -276,8 +280,8 @@ def send_notification_schedulers(schedulers, date):
         times = '\n'.join(time_pairs)
         text = f'Черга {sub_num_queue}, Відключення на {date}:\n' + f"{times}"
         if log_message[0] != text:
-            save_schedule_send_log(queue=sub_num_queue, text=text, date=date)
-            telegram_send_text(chat_id=CHANNELS.get(int(num_queue)), text=text)
+            tg_mess_id = telegram_send_text(chat_id=CHANNELS.get(int(num_queue)), text=text)
+            save_schedule_send_log(queue=sub_num_queue, text=text, date=date, tg_mess_id=tg_mess_id)
             logger.info(f"Send notification - Date: {date} Queue: {sub_num_queue}")
         else:
             logger.info(f"Skip notification is no update - Date: {date} Queue: {sub_num_queue} ")
@@ -285,12 +289,12 @@ def send_notification_schedulers(schedulers, date):
 
 def send_notification_outages(date, no_power_outages: str):
     """Send notification if no power outages"""
-    sleep(0.5)
-    log_message = get_schedule_send_log(queue='1.1', date=date)
+    sleep(1)
+    log_message = get_schedule_send_log(queue='0', date=date)
     if log_message[0] != no_power_outages:
-        save_schedule_send_log(queue='1.1', text=no_power_outages, date=date)
         for queue in range(1, 7):
             telegram_send_text(chat_id=CHANNELS.get(int(queue)), text=no_power_outages.split('.')[0])
+        save_schedule_send_log(queue='0', text=no_power_outages, date=date, tg_mess_id=0)
         logger.info(f"Send notification power outages - Date: {date}")
     else:
         logger.info(f"Skip notification is no power outages - Date: {date}")
@@ -304,7 +308,7 @@ def main(debug):
         return logger.info('Skip check outside time period')
     formatted_date = current_date.strftime('%d-%m-%Y')
     if debug:
-        with open('logs/18_12_2024_22_59_48.html', 'r', encoding='utf-8') as f:
+        with open('logs/25_12_2024_10_46_56.html', 'r', encoding='utf-8') as f:
             response = f.read()
     else:
         response = site_poe_gvp(formatted_date)
@@ -322,4 +326,4 @@ def main(debug):
 
 
 if __name__ == "__main__":
-    main(debug=True)
+    main(debug=False)
